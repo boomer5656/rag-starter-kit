@@ -1,0 +1,84 @@
+##############################################################################
+# ragkit — local infra for the ingestion pipeline
+# Services: qdrant (vector store) · tika (extraction) · reranker (opt-in,
+# "rerank" profile) · ollama (opt-in, "ollama" profile — skip if you already
+# run one on the LAN and point ragkit.yaml at it instead).
+#
+# Bring up the core stack:      docker compose up -d
+# Add the reranker sidecar:     docker compose --profile rerank up -d
+# Add a local Ollama too:       docker compose --profile ollama up -d
+##############################################################################
+
+name: ragkit
+
+services:
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ragkit-qdrant
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${QDRANT_PORT:-6333}:6333"
+      - "127.0.0.1:6334:6334"
+    volumes:
+      - qdrant:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  tika:
+    image: apache/tika:latest-full
+    container_name: ragkit-tika
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${TIKA_PORT:-9998}:9998"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9998/tika >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+
+  reranker:
+    build: ./reranker
+    container_name: ragkit-reranker
+    restart: unless-stopped
+    profiles: ["rerank"]
+    ports:
+      - "127.0.0.1:${RERANKER_PORT:-8009}:8009"
+    environment:
+      - RERANKER_MODEL=${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8009/health >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ragkit-ollama
+    restart: unless-stopped
+    profiles: ["ollama"]
+    ports:
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=15m
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+volumes:
+  qdrant:
+  ollama:

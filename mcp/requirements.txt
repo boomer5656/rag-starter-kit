@@ -1,0 +1,8 @@
+# mcp/server.py dependencies.
+#
+# ragkit itself is NOT listed here — install it from the repo root so the
+# `ragkit` package (config/embed/store/state/pipeline/...) is importable:
+#   pip install -e .
+mcp
+httpx
+pyyaml

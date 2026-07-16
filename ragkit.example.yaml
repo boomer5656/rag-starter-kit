@@ -1,0 +1,86 @@
+# ragkit.example.yaml — copy to ragkit.yaml and edit for your setup.
+#
+#   cp ragkit.example.yaml ragkit.yaml
+#
+# Every value here has a default baked into ragkit/config.py, so you only
+# need to *uncomment and change* what differs from your setup. Everything
+# can also be overridden with RAGKIT_* environment variables (handy for
+# Docker/CI without editing this file) — see config.py's _apply_env().
+# ragkit.yaml itself is gitignored; only this example is committed.
+
+# Qdrant collection this config talks to. `ragkit ingest --collection foo`
+# overrides this per-invocation without editing the file.
+collection: ragkit
+
+# --- Ollama: embeddings + the optional relevance-gate model -----------------
+ollama:
+  url: http://localhost:11434
+  embed_model: bge-m3          # 1024-dim, symmetric — no query/document prefix footgun
+  gate_model: llama3.2:3b      # only used if gate_enabled: true below
+
+# --- Qdrant: vector store -----------------------------------------------
+qdrant:
+  url: http://localhost:6333
+  distance: Cosine
+
+# --- Tika: extraction sidecar for binary docs (PDF, docx, ...) ----------
+# .txt/.md are read directly and never touch Tika. `allowed_root` confines
+# what Tika (and the ingest walk) is permitted to read — never point this
+# at a filesystem root; keep it scoped to the folder(s) you actually ingest.
+tika:
+  url: http://localhost:9998
+  allowed_root: .
+
+# --- Reranker: optional sidecar (bge-reranker-v2-m3) ---------------------
+# Leave `url` unset/null to skip reranking entirely — `ragkit search` will
+# just return the raw Qdrant top-k. Set it (and run `docker compose --profile
+# rerank up -d`) to enable `ragkit search --rerank`.
+reranker:
+  url: null   # e.g. http://localhost:8009
+
+# --- State store: tracks per-document ingest progress --------------------
+# sqlite is the default — zero setup, works from a clean clone. Switch to
+# postgres for a shared/multi-host deployment (same schema, same API).
+state:
+  backend: sqlite               # "sqlite" | "postgres"
+  sqlite_path: .ragkit/state.db
+  # postgres_dsn: postgresql://user:pass@host:5432/ragkit   # only if backend: postgres
+
+# --- Chunking ----------------------------------------------------------
+chunk:
+  max_tokens: 512
+  overlap_tokens: 64
+
+# --- Relevance gate ------------------------------------------------------
+# Off by default. When true, `ollama.gate_model` screens each document
+# before the (expensive) embed step, so you don't spend GPU time on junk.
+# Override per-run with `ragkit ingest --gate` / `--no-gate`.
+gate_enabled: false
+
+# ==============================================================================
+# Homelab tower example — a concrete "point it at a shared box" config.
+# Uncomment and adapt if you're running ragkit against a tower on your LAN
+# instead of localhost. These are just example values, nothing is hardcoded
+# in the code — swap in your own host/IP.
+# ==============================================================================
+#
+# collection: ragkit
+# ollama:
+#   url: http://192.168.1.32:11434
+#   embed_model: bge-m3
+#   gate_model: llama3.2:3b
+# qdrant:
+#   url: http://192.168.1.32:6333
+#   distance: Cosine
+# tika:
+#   url: http://192.168.1.32:9998
+#   allowed_root: /mnt/user/documents
+# reranker:
+#   url: http://192.168.1.32:8009
+# state:
+#   backend: sqlite
+#   sqlite_path: .ragkit/state.db
+# chunk:
+#   max_tokens: 512
+#   overlap_tokens: 64
+# gate_enabled: false

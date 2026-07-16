@@ -1,0 +1,10 @@
+# CPU-friendly cross-encoder reranker sidecar for ragkit.
+# Reranker: sentence-transformers CrossEncoder("BAAI/bge-reranker-v2-m3"), the
+# reranker Hugging Face recommends pairing with bge-m3 embeddings. Torch is CPU-only
+# here on purpose — this sidecar is meant to run alongside GPU-bound embed/generate
+# jobs without contending for VRAM.
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.4
+sentence-transformers==3.3.1
+torch==2.5.1

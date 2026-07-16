@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ragkit"
+version = "0.0.1"
+description = "Self-hosted RAG ingestion pipeline: observable, resource-aware, idempotent."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "TBD" }
+dependencies = [
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    "mcp>=1.0",
+    "fastmcp>=0.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+reranker = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
+
+[project.scripts]
+ragkit = "ragkit.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ragkit", "ragkit.*"]

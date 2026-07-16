@@ -1,0 +1,98 @@
+"""Load and validate ragkit.yaml, with environment-variable overrides.
+
+The shipped `ragkit.example.yaml` uses the homelab tower defaults as a concrete
+example (192.168.1.32 + the standard ports). Nothing here is hardcoded — every
+value comes from the yaml or an env override, so a buyer points it at their own
+Ollama/Qdrant by editing one file.
+"""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from typing import Any, Optional
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover
+    yaml = None
+
+
+@dataclass
+class OllamaConfig:
+    url: str = "http://localhost:11434"
+    embed_model: str = "bge-m3"
+    gate_model: str = "llama3.2:3b"
+
+
+@dataclass
+class QdrantConfig:
+    url: str = "http://localhost:6333"
+    distance: str = "Cosine"
+
+
+@dataclass
+class TikaConfig:
+    url: str = "http://localhost:9998"
+    allowed_root: str = "."          # file reads confined here; overridden per ingest
+
+
+@dataclass
+class RerankerConfig:
+    url: Optional[str] = None        # None => search skips reranking
+
+
+@dataclass
+class StateConfig:
+    backend: str = "sqlite"          # "sqlite" | "postgres"
+    sqlite_path: str = ".ragkit/state.db"
+    postgres_dsn: Optional[str] = None
+
+
+@dataclass
+class ChunkConfig:
+    max_tokens: int = 512
+    overlap_tokens: int = 64
+
+
+@dataclass
+class Config:
+    collection: str = "ragkit"
+    ollama: OllamaConfig = field(default_factory=OllamaConfig)
+    qdrant: QdrantConfig = field(default_factory=QdrantConfig)
+    tika: TikaConfig = field(default_factory=TikaConfig)
+    reranker: RerankerConfig = field(default_factory=RerankerConfig)
+    state: StateConfig = field(default_factory=StateConfig)
+    chunk: ChunkConfig = field(default_factory=ChunkConfig)
+    gate_enabled: bool = False       # opt-in per run
+
+    @staticmethod
+    def load(path: str = "ragkit.yaml") -> "Config":
+        data: dict[str, Any] = {}
+        if os.path.exists(path):
+            if yaml is None:
+                raise RuntimeError("pyyaml is required to read ragkit.yaml (pip install pyyaml)")
+            with open(path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        cfg = Config(
+            collection=data.get("collection", "ragkit"),
+            ollama=OllamaConfig(**(data.get("ollama") or {})),
+            qdrant=QdrantConfig(**(data.get("qdrant") or {})),
+            tika=TikaConfig(**(data.get("tika") or {})),
+            reranker=RerankerConfig(**(data.get("reranker") or {})),
+            state=StateConfig(**(data.get("state") or {})),
+            chunk=ChunkConfig(**(data.get("chunk") or {})),
+            gate_enabled=bool(data.get("gate_enabled", False)),
+        )
+        cfg._apply_env()
+        return cfg
+
+    def _apply_env(self) -> None:
+        """RAGKIT_* env vars override yaml — handy for Docker/CI without editing files."""
+        self.ollama.url = os.environ.get("RAGKIT_OLLAMA_URL", self.ollama.url)
+        self.ollama.embed_model = os.environ.get("RAGKIT_EMBED_MODEL", self.ollama.embed_model)
+        self.qdrant.url = os.environ.get("RAGKIT_QDRANT_URL", self.qdrant.url)
+        self.tika.url = os.environ.get("RAGKIT_TIKA_URL", self.tika.url)
+        if os.environ.get("RAGKIT_RERANKER_URL"):
+            self.reranker.url = os.environ["RAGKIT_RERANKER_URL"]
+        if os.environ.get("RAGKIT_COLLECTION"):
+            self.collection = os.environ["RAGKIT_COLLECTION"]

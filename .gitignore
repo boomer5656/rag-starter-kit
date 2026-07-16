@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ragkit runtime state (sqlite state db, local caches)
+.ragkit/
+
+# real config — keep ragkit.example.yaml, ignore the local copy
+ragkit.yaml
+
+# secrets
+.env
+.env.local
+
+# sample corpus stays text-only in the repo; ignore any binary docs a user
+# drops in for local testing
+examples/**/*.pdf
+
+# editor/OS cruft
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
