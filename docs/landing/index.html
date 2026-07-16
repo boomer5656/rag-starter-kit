@@ -1,0 +1,324 @@
+<title>ragkit — self-hosted RAG that isn't a black box</title>
+<style>
+  :root {
+    --ground: #100E0B; --panel: #1A1712; --panel-2: #221E18; --line: #2E2820;
+    --ink: #F0EADE; --muted: #A79E8D; --faint: #6E6759;
+    --accent: #F2A73E; --accent-2: #E8863A; --accent-ink: #1A1206;
+    --ok: #63BE81; --warn: #E7B24A; --skip: #8C8578; --err: #E5644E;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --maxw: 1080px; --radius: 10px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --ground: #F4EFE4; --panel: #FDFBF6; --panel-2: #F0E9DA; --line: #E0D7C4;
+      --ink: #201A11; --muted: #6A6151; --faint: #97907E;
+      --accent: #C1791A; --accent-2: #B3641A; --accent-ink: #FFF8EC;
+      --ok: #2E8B57; --warn: #B07D1B; --skip: #837B6C; --err: #C4442F;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #100E0B; --panel: #1A1712; --panel-2: #221E18; --line: #2E2820;
+    --ink: #F0EADE; --muted: #A79E8D; --faint: #6E6759;
+    --accent: #F2A73E; --accent-2: #E8863A; --accent-ink: #1A1206;
+    --ok: #63BE81; --warn: #E7B24A; --skip: #8C8578; --err: #E5644E;
+  }
+  :root[data-theme="light"] {
+    --ground: #F4EFE4; --panel: #FDFBF6; --panel-2: #F0E9DA; --line: #E0D7C4;
+    --ink: #201A11; --muted: #6A6151; --faint: #97907E;
+    --accent: #C1791A; --accent-2: #B3641A; --accent-ink: #FFF8EC;
+    --ok: #2E8B57; --warn: #B07D1B; --skip: #837B6C; --err: #C4442F;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans); line-height: 1.6;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  a { color: inherit; }
+  h1, h2, h3 { font-family: var(--mono); font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; margin: 0; }
+  p { margin: 0; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600;
+  }
+
+  /* nav */
+  nav {
+    position: sticky; top: 0; z-index: 10; background: color-mix(in oklab, var(--ground) 88%, transparent);
+    backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
+  }
+  .nav-in { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .brand { font-family: var(--mono); font-weight: 700; font-size: 17px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 9px; }
+  .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent); }
+  .nav-links { display: flex; align-items: center; gap: 22px; font-family: var(--mono); font-size: 13.5px; }
+  .nav-links a { color: var(--muted); text-decoration: none; }
+  .nav-links a:hover { color: var(--ink); }
+
+  .btn {
+    font-family: var(--mono); font-size: 14px; font-weight: 600; text-decoration: none;
+    padding: 10px 18px; border-radius: 8px; border: 1px solid transparent; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 9px; transition: transform .12s ease, background .15s ease;
+  }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); }
+  .btn-primary:hover { background: var(--accent-2); transform: translateY(-1px); }
+  .btn-ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* hero */
+  .hero { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 48px; align-items: center; padding: 88px 0 64px; }
+  .hero h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.05; }
+  .hero h1 .hl { color: var(--accent); }
+  .lede { color: var(--muted); font-size: 18px; margin-top: 22px; max-width: 34em; }
+  .hero-cta { display: flex; gap: 14px; margin-top: 32px; flex-wrap: wrap; }
+  .hero-note { font-family: var(--mono); font-size: 12.5px; color: var(--faint); margin-top: 18px; }
+
+  /* terminal panel */
+  .term { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: 0 24px 60px -30px rgba(0,0,0,.55); }
+  .term-bar { display: flex; align-items: center; gap: 7px; padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+  .term-bar i { width: 11px; height: 11px; border-radius: 50%; background: var(--line); display: inline-block; }
+  .term-bar .t { margin-left: 10px; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .term-body { padding: 18px 18px 20px; font-family: var(--mono); font-size: 13.5px; line-height: 1.75; overflow-x: auto; }
+  .term-body .c { color: var(--muted); }
+  .term-body .p { color: var(--accent); }
+  .term-body .k { color: var(--ink); }
+  .st { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 12px; margin-top: 6px; }
+  .st .s { display: flex; align-items: center; gap: 9px; }
+  .st .s b { width: 8px; height: 8px; border-radius: 2px; }
+  .st .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .badge-ok { color: var(--ok); } .badge-err { color: var(--err); } .badge-skip { color: var(--skip); }
+
+  /* generic section */
+  section { padding: 56px 0; border-top: 1px solid var(--line); }
+  .sec-head { max-width: 40em; margin-bottom: 40px; }
+  .sec-head h2 { font-size: clamp(24px, 3vw, 32px); margin-top: 12px; }
+  .sec-head p { color: var(--muted); margin-top: 14px; font-size: 16.5px; }
+
+  /* pipeline flow */
+  .flow { display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap; }
+  .stage {
+    flex: 1 1 130px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 14px 16px; position: relative; opacity: 0; transform: translateY(6px);
+    animation: rise .5s ease forwards;
+  }
+  .stage .lbl { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+  .stage .desc { font-size: 12.5px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
+  .stage .tick { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); position: absolute; top: 14px; right: 14px; }
+  .branch { display: flex; gap: 10px; margin-top: 12px; }
+  .branch .stage { flex: 1 1 auto; background: var(--panel-2); }
+  .stage.skip .tick { background: var(--skip); } .stage.skip .lbl { color: var(--skip); }
+  .stage.err .tick { background: var(--err); } .stage.err .lbl { color: var(--err); }
+  .stage.stored .tick { background: var(--ok); } .stage.stored .lbl { color: var(--ok); }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+
+  /* feature grid */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .cell { background: var(--ground); padding: 26px 24px; }
+  .cell .k { font-family: var(--mono); font-size: 14.5px; font-weight: 600; color: var(--accent); }
+  .cell h3 { font-size: 17px; margin-top: 12px; font-family: var(--sans); font-weight: 650; letter-spacing: 0; }
+  .cell p { color: var(--muted); font-size: 14.5px; margin-top: 8px; }
+
+  /* quickstart */
+  .qs { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 24px; font-family: var(--mono); font-size: 14px; line-height: 2; overflow-x: auto; }
+  .qs .c { color: var(--faint); } .qs .p { color: var(--accent); } .qs .cmd { color: var(--ink); }
+
+  /* tiers */
+  .tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .tier { border: 1px solid var(--line); border-radius: var(--radius); padding: 28px 26px; background: var(--panel); }
+  .tier.pro { border-color: color-mix(in oklab, var(--accent) 55%, var(--line)); background: color-mix(in oklab, var(--accent) 6%, var(--panel)); }
+  .tier .t { font-family: var(--mono); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .tier.pro .t { color: var(--accent); }
+  .tier .price { font-family: var(--mono); font-size: 26px; font-weight: 700; margin-top: 10px; }
+  .tier ul { list-style: none; padding: 0; margin: 18px 0 0; display: flex; flex-direction: column; gap: 11px; }
+  .tier li { font-size: 14.5px; color: var(--ink); padding-left: 24px; position: relative; }
+  .tier li::before { content: "›"; position: absolute; left: 6px; color: var(--accent); font-family: var(--mono); }
+  .tier li span { color: var(--muted); }
+
+  /* waitlist */
+  .cta-band { text-align: center; }
+  .cta-band h2 { font-size: clamp(26px, 4vw, 38px); }
+  .cta-band p { color: var(--muted); font-size: 17px; margin: 16px auto 0; max-width: 32em; }
+  .cta-row { display: flex; gap: 14px; justify-content: center; margin-top: 30px; flex-wrap: wrap; }
+
+  footer { border-top: 1px solid var(--line); padding: 40px 0 56px; color: var(--faint); font-family: var(--mono); font-size: 12.5px; }
+  .foot-in { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+  footer a { color: var(--muted); text-decoration: none; } footer a:hover { color: var(--accent); }
+
+  @media (max-width: 820px) {
+    .hero { grid-template-columns: 1fr; gap: 36px; padding: 56px 0 40px; }
+    .grid { grid-template-columns: 1fr; }
+    .tiers { grid-template-columns: 1fr; }
+    .nav-links .hide-sm { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stage { animation: none; opacity: 1; transform: none; }
+    .btn:hover { transform: none; }
+  }
+</style>
+
+<nav>
+  <div class="wrap nav-in">
+    <div class="brand"><span class="dot"></span>ragkit</div>
+    <div class="nav-links">
+      <a href="#pipeline" class="hide-sm">Pipeline</a>
+      <a href="#why" class="hide-sm">Why</a>
+      <a href="#start" class="hide-sm">Quick start</a>
+      <a href="https://github.com/boomer5656/rag-starter-kit">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<header class="wrap hero">
+  <div>
+    <span class="eyebrow">Self-hosted · MIT · runs on your LAN</span>
+    <h1>RAG over your documents that <span class="hl">isn't a black box.</span></h1>
+    <p class="lede">Chatting with your docs is a solved, commoditized problem. The part every tool hides — how your messy documents actually get into the vector store — is the part that decides whether the answers are any good. ragkit is that part, done in the open, on hardware you control.</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="https://github.com/boomer5656/rag-starter-kit">★ Star on GitHub</a>
+      <a class="btn btn-ghost" href="#waitlist">Join the Pro waitlist</a>
+    </div>
+    <p class="hero-note">docker compose up -d &nbsp;·&nbsp; pip install -e . &nbsp;·&nbsp; ragkit ingest ./docs</p>
+  </div>
+
+  <div class="term" aria-hidden="true">
+    <div class="term-bar"><i></i><i></i><i></i><span class="t">ragkit status — collection: research</span></div>
+    <div class="term-body">
+      <div><span class="p">$</span> <span class="k">ragkit ingest ./contracts --gate</span></div>
+      <div class="c">discovered=812  extracted=812  gated=771  skipped=41</div>
+      <div class="c">chunked=771  embedded=771  stored=771  errors=0</div>
+      <div style="height:12px"></div>
+      <div><span class="p">$</span> <span class="k">ragkit status</span></div>
+      <div class="st">
+        <div class="s"><b style="background:var(--ok)"></b><span>stored</span></div><div></div><div class="n badge-ok">771</div>
+        <div class="s"><b style="background:var(--skip)"></b><span>skipped (gate)</span></div><div></div><div class="n badge-skip">41</div>
+        <div class="s"><b style="background:var(--err)"></b><span>error</span></div><div></div><div class="n badge-err">0</div>
+      </div>
+      <div style="height:10px"></div>
+      <div class="c"># every file accounted for — nothing silently dropped</div>
+    </div>
+  </div>
+</header>
+
+<section id="pipeline">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">The signature</span>
+      <h2>An observable pipeline, not a churn-and-pray import.</h2>
+      <p>Every document moves through explicit states, and the state is written to disk after each one. A crash resumes where it stopped. A failure is <em>visible</em> — never a silent drop.</p>
+    </div>
+    <div class="wrap" style="padding:0">
+      <div class="flow">
+        <div class="stage" style="animation-delay:.05s"><span class="tick"></span><div class="lbl">discovered</div><div class="desc">a connector yields a source doc</div></div>
+        <div class="stage" style="animation-delay:.13s"><span class="tick"></span><div class="lbl">extracted</div><div class="desc">text pulled (Tika, confined)</div></div>
+        <div class="stage" style="animation-delay:.21s"><span class="tick"></span><div class="lbl">gated</div><div class="desc">cheap model filters junk</div></div>
+        <div class="stage" style="animation-delay:.29s"><span class="tick"></span><div class="lbl">chunked</div><div class="desc">token-budgeted, with overlap</div></div>
+        <div class="stage" style="animation-delay:.37s"><span class="tick"></span><div class="lbl">embedded</div><div class="desc">bge-m3, dim asserted</div></div>
+        <div class="stage stored" style="animation-delay:.45s"><span class="tick"></span><div class="lbl">stored</div><div class="desc">idempotent upsert to Qdrant</div></div>
+      </div>
+      <div class="branch">
+        <div class="stage skip" style="animation-delay:.53s"><span class="tick"></span><div class="lbl">skipped</div><div class="desc">the gate rejected it — on purpose, and logged with a reason</div></div>
+        <div class="stage err" style="animation-delay:.61s"><span class="tick"></span><div class="lbl">error</div><div class="desc">something failed — kept visible with its message, never discarded</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="why">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Why it's different</span>
+      <h2>The pipeline is the product.</h2>
+      <p>The chatbot is a commodity. These are the things a black box won't give you — and the reasons your retrieval quality actually holds up.</p>
+    </div>
+    <div class="grid">
+      <div class="cell"><div class="k">observable</div><h3>Know what happened to every file</h3><p>An explicit state machine and a status view. No more "some PDFs just aren't in the answers and I can't tell why."</p></div>
+      <div class="cell"><div class="k">resource-aware</div><h3>Built for one GPU, not a cluster</h3><p>Stage-batched execution keeps the embedding model resident instead of thrashing VRAM on every document.</p></div>
+      <div class="cell"><div class="k">gated</div><h3>Don't embed junk</h3><p>An optional cheap-model relevance gate filters documents before the expensive embed step. Opt-in, per run.</p></div>
+      <div class="cell"><div class="k">idempotent</div><h3>Re-run anytime, zero duplicates</h3><p>Every chunk has a stable id. Re-ingesting updates in place — safe to run on a schedule.</p></div>
+      <div class="cell"><div class="k">correct</div><h3>The dimension bug can't happen</h3><p>Embedding dimension is asserted against the collection before any write. No more 1024-dim query against a 768-dim store.</p></div>
+      <div class="cell"><div class="k">private</div><h3>Nothing leaves your network</h3><p>Your Ollama, your Qdrant, your disk. An MCP server lets Claude Code retrieve from your store — still all local.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Quick start</span>
+      <h2>Running in three commands.</h2>
+      <p>Bring your own Ollama with <code>bge-m3</code> pulled. ragkit brings the pipeline, Qdrant, and Tika.</p>
+    </div>
+    <div class="qs">
+      <div><span class="c"># clone, configure, bring up Qdrant + Tika</span></div>
+      <div><span class="p">$</span> <span class="cmd">git clone …/rag-starter-kit &amp;&amp; cd rag-starter-kit</span></div>
+      <div><span class="p">$</span> <span class="cmd">cp ragkit.example.yaml ragkit.yaml &amp;&amp; docker compose up -d</span></div>
+      <div><span class="p">$</span> <span class="cmd">pip install -e .</span></div>
+      <div style="height:10px"></div>
+      <div><span class="c"># point it at your documents, then ask</span></div>
+      <div><span class="p">$</span> <span class="cmd">ragkit ingest /path/to/your/pdfs --collection mydocs</span></div>
+      <div><span class="p">$</span> <span class="cmd">ragkit search "what's our renewal clause?" --collection mydocs --rerank</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Free core, paid connectors</span>
+      <h2>Open-core. The useful thing is free.</h2>
+      <p>The whole pipeline is MIT and self-hostable end to end. Pro is about the connectors and the polish that save a busy operator the maintenance — not crippleware.</p>
+    </div>
+    <div class="tiers">
+      <div class="tier">
+        <div class="t">Core — MIT, free</div>
+        <div class="price">$0</div>
+        <ul>
+          <li>The full ingestion pipeline <span>— state machine, gate, idempotent upsert</span></li>
+          <li>Files connector <span>— PDFs, docx, md, and more</span></li>
+          <li>CLI + MCP server <span>— retrieve from Claude Code</span></li>
+          <li>Reranker sidecar <span>— bge-reranker-v2-m3</span></li>
+          <li>docker-compose + docs <span>— self-host in minutes</span></li>
+        </ul>
+      </div>
+      <div class="tier pro">
+        <div class="t">Pro — waitlist</div>
+        <div class="price">early access</div>
+        <ul>
+          <li>Premium connectors <span>— Gmail, Drive, S3, Confluence, Notion, IMAP</span></li>
+          <li>Incremental sync + auth handling <span>— set it and forget it</span></li>
+          <li>Web admin UI <span>— the state machine, without the CLI</span></li>
+          <li>Done-for-you setup <span>— running on your box today</span></li>
+          <li>Priority support + updates</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="waitlist">
+  <div class="wrap cta-band">
+    <span class="eyebrow">Help decide what gets built</span>
+    <h2>Which connectors should ship first?</h2>
+    <p>Pro isn't built yet — it's being built on demand. Star the repo to follow along, and join the waitlist to tell me which connectors you'd actually pay to not build yourself.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="mailto:boomer5656@gmail.com?subject=ragkit%20Pro%20waitlist&body=Which%20connectors%20do%20you%20need%20(Gmail%2FDrive%2FS3%2FConfluence%2FNotion%2FIMAP%2Fother)%3F%0AWhat%20are%20you%20ingesting%3F%0A">Join the Pro waitlist</a>
+      <a class="btn btn-ghost" href="https://github.com/boomer5656/rag-starter-kit">★ Star on GitHub</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-in">
+    <div>ragkit — a self-hosted RAG ingestion pipeline. MIT-licensed. Built in the open.</div>
+    <div><a href="https://github.com/boomer5656/rag-starter-kit">github.com/boomer5656/rag-starter-kit</a></div>
+  </div>
+</footer>
+
+<script>
+  // Restrained: nothing but respecting an existing theme stamp if present.
+  // The page is fully driven by CSS tokens; no JS behavior is required.
+</script>
