@@ -66,17 +66,17 @@ gate_enabled: false
 #
 # collection: ragkit
 # ollama:
-#   url: http://192.168.1.32:11434
+#   url: http://192.168.1.100:11434
 #   embed_model: bge-m3
 #   gate_model: llama3.2:3b
 # qdrant:
-#   url: http://192.168.1.32:6333
+#   url: http://192.168.1.100:6333
 #   distance: Cosine
 # tika:
-#   url: http://192.168.1.32:9998
+#   url: http://192.168.1.100:9998
 #   allowed_root: /mnt/user/documents
 # reranker:
-#   url: http://192.168.1.32:8009
+#   url: http://192.168.1.100:8009
 # state:
 #   backend: sqlite
 #   sqlite_path: .ragkit/state.db

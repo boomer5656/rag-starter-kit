@@ -88,7 +88,7 @@ is terminal-for-that-doc and *visible* (counted, listed by `ragkit status`), nev
 - **Reranker:** optional sidecar; search skips it if not configured.
 
 Everything is driven by one `ragkit.yaml` with env-var overrides. The tower defaults
-(`192.168.1.32`, the homelab ports) are the *example* config, not hardcoded.
+(`192.168.1.100`, the homelab ports) are the *example* config, not hardcoded.
 
 ## Security posture (carried over, non-negotiable)
 

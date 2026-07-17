@@ -1,7 +1,7 @@
 """Load and validate ragkit.yaml, with environment-variable overrides.
 
 The shipped `ragkit.example.yaml` uses the homelab tower defaults as a concrete
-example (192.168.1.32 + the standard ports). Nothing here is hardcoded — every
+example (192.168.1.100 + the standard ports). Nothing here is hardcoded — every
 value comes from the yaml or an env override, so a buyer points it at their own
 Ollama/Qdrant by editing one file.
 """
