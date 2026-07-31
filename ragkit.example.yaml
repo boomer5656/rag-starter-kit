@@ -16,7 +16,7 @@ collection: ragkit
 ollama:
   url: http://localhost:11434
   embed_model: bge-m3          # 1024-dim, symmetric — no query/document prefix footgun
-  gate_model: llama3.2:3b      # only used if gate_enabled: true below
+  gate_model: qwen3:1.7b      # only used if gate_enabled: true below
 
 # --- Qdrant: vector store -----------------------------------------------
 qdrant:
@@ -68,7 +68,7 @@ gate_enabled: false
 # ollama:
 #   url: http://192.168.1.100:11434
 #   embed_model: bge-m3
-#   gate_model: llama3.2:3b
+#   gate_model: qwen3:1.7b
 # qdrant:
 #   url: http://192.168.1.100:6333
 #   distance: Cosine
