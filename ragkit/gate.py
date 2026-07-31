@@ -1,7 +1,7 @@
 """Relevance gate: an LLM call that decides whether a document belongs in the index.
 
 Mirrors the gate phase of the knowledge-ingest-pipeline's wf2_process.sh (batched
-llama3.2:3b call against Ollama's /api/generate with format="json") but adapted to a
+qwen3:1.7b call against Ollama's /api/generate with format="json") but adapted to a
 single-document Gate.keep() call — the pipeline itself does the batching by stage,
 keeping the gate model resident for the whole batch before moving on.
 

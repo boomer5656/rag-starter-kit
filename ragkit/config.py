@@ -20,8 +20,11 @@ except ImportError:  # pragma: no cover
 @dataclass
 class OllamaConfig:
     url: str = "http://localhost:11434"
+    # Tags track ~/dev/homelab-plugin/model-registry.json (roles `embed_text` / `triage`).
+    # gate_model was `llama3.2:3b` until 2026-07-30; that model was deleted from the fleet
+    # on 2026-07-29 as redundant with qwen3:1.7b, so the old default no longer resolves.
     embed_model: str = "bge-m3"
-    gate_model: str = "llama3.2:3b"
+    gate_model: str = "qwen3:1.7b"
 
 
 @dataclass
