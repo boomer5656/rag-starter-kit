@@ -58,6 +58,14 @@ class ChunkConfig:
 
 
 @dataclass
+class EvalConfig:
+    golden_path: str = ".ragkit/eval/{collection}.golden.jsonl"   # {collection} templated at use
+    gen_model: Optional[str] = None    # None -> falls back to ollama.gate_model
+    per_doc_n: int = 3
+    k_values: list[int] = field(default_factory=lambda: [1, 3, 5, 10])
+
+
+@dataclass
 class Config:
     collection: str = "ragkit"
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
@@ -66,6 +74,7 @@ class Config:
     reranker: RerankerConfig = field(default_factory=RerankerConfig)
     state: StateConfig = field(default_factory=StateConfig)
     chunk: ChunkConfig = field(default_factory=ChunkConfig)
+    eval: EvalConfig = field(default_factory=EvalConfig)
     gate_enabled: bool = False       # opt-in per run
 
     @staticmethod
@@ -84,6 +93,7 @@ class Config:
             reranker=RerankerConfig(**(data.get("reranker") or {})),
             state=StateConfig(**(data.get("state") or {})),
             chunk=ChunkConfig(**(data.get("chunk") or {})),
+            eval=EvalConfig(**(data.get("eval") or {})),
             gate_enabled=bool(data.get("gate_enabled", False)),
         )
         cfg._apply_env()
