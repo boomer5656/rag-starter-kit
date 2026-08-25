@@ -95,5 +95,23 @@ class Store:
         r.raise_for_status()
         return r.json().get("result", [])
 
+    def scroll_points(self, page: int = 256):
+        """Yield every stored point (payload only) via Qdrant's scroll API.
+        Used by the eval harness to reconstruct source docs from the collection."""
+        offset = None
+        while True:
+            body: dict = {"limit": page, "with_payload": True, "with_vector": False}
+            if offset is not None:
+                body["offset"] = offset
+            r = self._client.post(self._url("/points/scroll"), json=body)
+            r.raise_for_status()
+            result = r.json().get("result", {})
+            points = result.get("points", [])
+            for p in points:
+                yield p
+            offset = result.get("next_page_offset")
+            if offset is None or not points:
+                break
+
     def close(self) -> None:
         self._client.close()
