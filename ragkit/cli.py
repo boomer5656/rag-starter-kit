@@ -144,7 +144,9 @@ def _make_gen_fn(client: httpx.Client, ollama_url: str, model: str):
                   f"Document:\n{doc_text}\n\nReturn JSON: {{\"questions\": [...]}}")
         r = client.post(f"{ollama_url}/api/generate", json={
             "model": model, "system": system, "prompt": prompt,
-            "stream": False, "format": "json", "options": {"temperature": 0.2},
+            # think=False is load-bearing: Qwen3 models default to a thinking pass that,
+            # under format="json", consumes the whole budget and returns "" or "{}".
+            "stream": False, "format": "json", "think": False, "options": {"temperature": 0.2},
         })
         r.raise_for_status()
         raw = r.json().get("response")

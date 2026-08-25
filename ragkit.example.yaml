@@ -88,6 +88,8 @@ gate_enabled: false
 # Eval harness (ragkit eval-gen / ragkit eval). Doc-level recall@k + MRR.
 eval:
   golden_path: ".ragkit/eval/{collection}.golden.jsonl"
-  # gen_model: null            # null -> uses ollama.gate_model to write synthetic questions
+  # gen_model: null            # null -> ollama.gate_model. Set a CAPABLE instruct model
+  #                            # (>=~9B, e.g. qwen3.5:9b) — a tiny triage model writes weak
+  #                            # or empty questions. Qwen3 thinking is disabled automatically.
   per_doc_n: 3                  # questions generated per document
   k_values: [1, 3, 5, 10]
