@@ -13,8 +13,14 @@ import os
 import subprocess
 import sys
 
+import httpx
+
 from .config import Config
 from .embed import Embedder
+from .eval import (
+    EvalReport, compare, evaluate, generate_golden, load_golden, load_report,
+    save_golden, save_report,
+)
 from .extract import TikaExtractor
 from .gate import RelevanceGate
 from .models import PipelineResult
@@ -107,6 +113,115 @@ def cmd_search(args: argparse.Namespace) -> int:
         searcher.close()
 
 
+_DISTINCT_FANOUT = 8   # over-fetch chunk hits so we get enough *distinct* docs for recall@maxk
+
+
+def _docs_from_store(store: Store, char_cap: int = 6000) -> dict[str, str]:
+    """Reconstruct {source_uri: text} from stored chunks, in ordinal order, capped."""
+    by_uri: dict[str, list[tuple[int, str]]] = {}
+    for p in store.scroll_points():
+        pl = p.get("payload") or {}
+        uri = pl.get("source_uri")
+        if not uri:
+            continue
+        by_uri.setdefault(uri, []).append((pl.get("ordinal", 0), pl.get("text", "")))
+    docs: dict[str, str] = {}
+    for uri, parts in by_uri.items():
+        parts.sort(key=lambda t: t[0])
+        docs[uri] = "\n".join(t[1] for t in parts)[:char_cap]
+    return docs
+
+
+def _make_gen_fn(client: httpx.Client, ollama_url: str, model: str):
+    system = (
+        "You write evaluation questions for a document retrieval system. "
+        "Output ONLY JSON: {\"questions\": [\"...\"]}. Each question must be answerable "
+        "from the document, realistic, and MUST NOT mention the document, its title, or filename."
+    )
+
+    def gen(doc_text: str, n: int) -> list[str]:
+        prompt = (f"Write {n} distinct questions a user would ask that this document answers.\n\n"
+                  f"Document:\n{doc_text}\n\nReturn JSON: {{\"questions\": [...]}}")
+        r = client.post(f"{ollama_url}/api/generate", json={
+            "model": model, "system": system, "prompt": prompt,
+            "stream": False, "format": "json", "options": {"temperature": 0.2},
+        })
+        r.raise_for_status()
+        raw = r.json().get("response")
+        if not raw:
+            raise RuntimeError(f"gen: empty response from {model}")
+        import json as _json
+        data = _json.loads(raw)
+        qs = data.get("questions") if isinstance(data, dict) else data
+        return [str(q) for q in (qs or [])][:n]
+
+    return gen
+
+
+def cmd_eval_gen(args: argparse.Namespace) -> int:
+    cfg = Config.load(args.config)
+    if args.collection:
+        cfg.collection = args.collection
+    model = args.model or cfg.eval.gen_model or cfg.ollama.gate_model
+    out = args.out or cfg.eval.golden_path.format(collection=cfg.collection)
+    store = Store(cfg.qdrant, cfg.collection)
+    client = httpx.Client(timeout=120.0)
+    try:
+        docs = _docs_from_store(store)
+        if not docs:
+            print(f"no stored docs in collection '{cfg.collection}' — ingest first")
+            return 1
+        items, skipped = generate_golden(docs.items(), _make_gen_fn(client, cfg.ollama.url, model),
+                                          args.per_doc)
+        save_golden(items, out)
+        print(f"generated {len(items)} questions from {len(docs)} docs "
+              f"({skipped} skipped) -> {out}")
+        return 0
+    finally:
+        client.close()
+        store.close()
+
+
+def cmd_eval(args: argparse.Namespace) -> int:
+    cfg = Config.load(args.config)
+    if args.collection:
+        cfg.collection = args.collection
+    k_values = [int(x) for x in args.k.split(",")] if args.k else cfg.eval.k_values
+    golden_path = args.golden or cfg.eval.golden_path.format(collection=cfg.collection)
+    golden = load_golden(golden_path)
+    searcher = Searcher(cfg)
+    try:
+        def search_fn(query: str, top_k: int) -> list[str]:
+            hits = searcher.search(query, top_k=top_k * _DISTINCT_FANOUT, rerank=args.rerank)
+            return [h["source_uri"] for h in hits]
+
+        recall, mrr, per_query, errored = evaluate(golden, search_fn, k_values)
+        report = EvalReport(
+            collection=cfg.collection, n_queries=len(golden), k_values=k_values,
+            rerank=args.rerank, gen_model=None, recall_at_k=recall, mrr=mrr, per_query=per_query,
+        )
+        print(f"collection: {report.collection}   queries: {report.n_queries}   "
+              f"rerank: {report.rerank}   errored: {errored}")
+        for k in k_values:
+            print(f"  recall@{k:<3} {report.recall_at_k[k]:.3f}")
+        print(f"  MRR      {report.mrr:.3f}")
+        if args.out:
+            save_report(report, args.out)
+            print(f"report -> {args.out}")
+        if args.baseline:
+            cmp = compare(load_report(args.baseline), report)
+            print("\nvs baseline:")
+            for w in cmp["warnings"]:
+                print(f"  ! {w}")
+            for k, (b, c, dlt) in cmp["recall_at_k"].items():
+                print(f"  recall@{k:<3} {b:.3f} -> {c:.3f} ({dlt:+.3f})")
+            b, c, dlt = cmp["mrr"]
+            print(f"  MRR      {b:.3f} -> {c:.3f} ({dlt:+.3f})")
+        return 0
+    finally:
+        searcher.close()
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     cfg = Config.load(args.config)
     collection = args.collection or cfg.collection
@@ -160,6 +275,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument("--rerank", action="store_true")
     p_search.add_argument("--config", default="ragkit.yaml")
     p_search.set_defaults(func=cmd_search)
+
+    p_eval_gen = sub.add_parser("eval-gen", help="generate a synthetic golden set from a collection")
+    p_eval_gen.add_argument("collection", nargs="?", default=None)
+    p_eval_gen.add_argument("--per-doc", type=int, default=3, dest="per_doc")
+    p_eval_gen.add_argument("--out", default=None)
+    p_eval_gen.add_argument("--model", default=None)
+    p_eval_gen.add_argument("--config", default="ragkit.yaml")
+    p_eval_gen.set_defaults(func=cmd_eval_gen)
+
+    p_eval = sub.add_parser("eval", help="score retrieval (recall@k + MRR) against a golden set")
+    p_eval.add_argument("collection", nargs="?", default=None)
+    p_eval.add_argument("--golden", default=None)
+    p_eval.add_argument("--k", default=None, help="comma-separated, e.g. 1,3,5,10")
+    p_eval.add_argument("--rerank", action="store_true")
+    p_eval.add_argument("--out", default=None)
+    p_eval.add_argument("--baseline", default=None)
+    p_eval.add_argument("--config", default="ragkit.yaml")
+    p_eval.set_defaults(func=cmd_eval)
 
     p_status = sub.add_parser("status", help="show ingest state counts and recent errors")
     p_status.add_argument("--collection", default=None)
