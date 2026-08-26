@@ -24,6 +24,7 @@ from .eval import (
 from .extract import TikaExtractor
 from .gate import RelevanceGate
 from .models import PipelineResult
+from .ollama import generate_json
 from .pipeline import Pipeline
 from .search import Searcher
 from .state import StateStore
@@ -142,22 +143,9 @@ def _make_gen_fn(client: httpx.Client, ollama_url: str, model: str):
     def gen(doc_text: str, n: int) -> list[str]:
         prompt = (f"Write {n} distinct questions a user would ask that this document answers.\n\n"
                   f"Document:\n{doc_text}\n\nReturn JSON: {{\"questions\": [...]}}")
-        r = client.post(f"{ollama_url}/api/generate", json={
-            "model": model, "system": system, "prompt": prompt,
-            # think=False is load-bearing: Qwen3 models default to a thinking pass that,
-            # under format="json", consumes the whole budget and returns "" or "{}".
-            # num_predict caps output per the usage-limits doctrine (no uncapped generations).
-            "stream": False, "format": "json", "think": False,
-            "options": {"temperature": 0.2, "num_predict": 1024},
-        })
-        r.raise_for_status()
-        raw = r.json().get("response")
-        if not raw:
-            raise RuntimeError(f"gen: empty response from {model}")
-        import json as _json
-        data = _json.loads(raw)
+        data = generate_json(client, ollama_url, model, system=system, prompt=prompt, temperature=0.2)
         qs = data.get("questions") if isinstance(data, dict) else data
-        if not isinstance(qs, list):      # model returned a non-list shape -> no questions
+        if not isinstance(qs, list):
             return []
         return [str(q) for q in qs][:n]
 
