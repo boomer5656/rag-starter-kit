@@ -71,9 +71,16 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     state = StateStore(cfg.state, collection)
     gate = RelevanceGate(cfg.ollama, _gate_criteria(cfg)) if args.gate else None
 
+    contextualizer = None
+    if cfg.contextual.enabled:
+        from .contextualize import Contextualizer
+        ctx_model = cfg.contextual.model or cfg.ollama.gate_model
+        contextualizer = Contextualizer(cfg.ollama, ctx_model, cfg.contextual.max_chunks_per_call)
+
     pipeline = Pipeline(
         cfg, extractor=extractor, chunker=chunker, embedder=embedder,
-        store=store, state=state, gate=gate, index_fields=index_fields,
+        store=store, state=state, gate=gate, contextualizer=contextualizer,
+        index_fields=index_fields,
     )
     try:
         result: PipelineResult = pipeline.run(
@@ -89,6 +96,8 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         state.close()
         if gate is not None:
             gate.close()
+        if contextualizer is not None:
+            contextualizer.close()
 
 
 def cmd_search(args: argparse.Namespace) -> int:

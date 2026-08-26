@@ -33,10 +33,15 @@ class Gate(Protocol):
     def keep(self, doc: SourceDoc) -> tuple[bool, str]: ...
 
 
+class ContextualizerLike(Protocol):
+    def contextualize(self, doc_text: str, chunks: list[Chunk]) -> list[str]: ...
+
+
 class Pipeline:
     def __init__(self, cfg: Config, *, extractor: Extractor, chunker: Chunker,
                  embedder: Embedder, store: Store, state: StateStore,
-                 gate: Gate | None = None, index_fields: dict[str, str] | None = None):
+                 gate: Gate | None = None, contextualizer: ContextualizerLike | None = None,
+                 index_fields: dict[str, str] | None = None):
         self.cfg = cfg
         self.extractor = extractor
         self.chunker = chunker
@@ -44,6 +49,7 @@ class Pipeline:
         self.store = store
         self.state = state
         self.gate = gate
+        self.contextualizer = contextualizer
         self.index_fields = index_fields or {}
 
     def run(self, docs: Iterable[SourceDoc], *, source_type: str = "document",
@@ -115,7 +121,12 @@ class Pipeline:
         # --- embed + store (bge-m3 resident for the whole batch) ---
         for d, chunks in chunked:
             try:
-                vectors = self.embedder.embed_batch([c.text for c in chunks])
+                texts = [c.text for c in chunks]
+                if self.contextualizer is not None:
+                    ctxs = self.contextualizer.contextualize(d.text or "", chunks)
+                    texts = [f"{ctx}\n{c.text}" if ctx else c.text
+                             for ctx, c in zip(ctxs, chunks)]
+                vectors = self.embedder.embed_batch(texts)
                 bad = next((v for v in vectors if len(v) != dim), None)
                 if bad is not None:
                     raise ValueError(f"embedding dim {len(bad)} != expected {dim}")
