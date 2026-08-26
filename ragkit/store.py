@@ -30,43 +30,55 @@ class Store:
     def exists(self) -> bool:
         return self._client.get(self._url()).status_code == 200
 
-    def current_dim(self) -> int | None:
+    def _vectors_cfg(self):
         r = self._client.get(self._url())
         if r.status_code != 200:
             return None
-        cfg = r.json().get("result", {}).get("config", {}).get("params", {}).get("vectors", {})
-        # unnamed-vector collections put size at vectors.size
-        return cfg.get("size") if isinstance(cfg, dict) else None
+        return r.json().get("result", {}).get("config", {}).get("params", {}).get("vectors", {})
+
+    def current_dim(self) -> int | None:
+        v = self._vectors_cfg()
+        if not isinstance(v, dict):
+            return None
+        dense = v.get("dense")
+        if isinstance(dense, dict):
+            return dense.get("size")
+        return v.get("size")  # legacy unnamed collection (pre-hybrid)
 
     def ensure_collection(self, dim: int, index_fields: dict[str, str] | None = None) -> None:
-        """Create the collection at `dim` if absent; if present, assert its dim matches.
-
-        `index_fields` maps payload field -> schema ("keyword"|"integer"|"bool"|"float")
-        so connectors can declare what they want to filter on.
-        """
-        existing = self.current_dim()
-        if existing is not None:
-            if existing != dim:
+        """Create a named-vector (dense) + sparse collection if absent; else assert its
+        dense dim matches. A pre-hybrid unnamed collection is rejected — recreate it."""
+        v = self._vectors_cfg()
+        if v is not None:
+            dense = v.get("dense") if isinstance(v, dict) else None
+            if not isinstance(dense, dict):
                 raise DimensionMismatch(
-                    f"collection '{self.collection}' is dim={existing} but the embedder "
-                    f"produces dim={dim}. Refusing to write (this is the cross-wire bug). "
-                    f"Use a fresh collection or re-embed."
+                    f"collection '{self.collection}' predates the hybrid (named-vector) schema. "
+                    f"Delete it or use a fresh collection, then re-ingest."
+                )
+            if dense.get("size") != dim:
+                raise DimensionMismatch(
+                    f"collection '{self.collection}' is dim={dense.get('size')} but the embedder "
+                    f"produces dim={dim}. Use a fresh collection or re-embed."
                 )
             return
         self._client.put(
             self._url(),
-            json={"vectors": {"size": dim, "distance": self.cfg.distance}, "on_disk_payload": True},
+            json={
+                "vectors": {"dense": {"size": dim, "distance": self.cfg.distance}},
+                "sparse_vectors": {"sparse": {}},
+                "on_disk_payload": True,
+            },
         ).raise_for_status()
         for field_name, schema in (index_fields or {}).items():
-            # index creation is best-effort; a duplicate/late index shouldn't abort ingest
             self._client.put(self._url("/index"),
                              json={"field_name": field_name, "field_schema": schema})
 
-    def upsert(self, chunks: list[Chunk], vectors: list[list[float]],
-               source_type: str) -> None:
-        assert len(chunks) == len(vectors)
+    def upsert(self, chunks: list[Chunk], dense_vectors: list[list[float]],
+               sparse_vectors: list[dict], source_type: str) -> None:
+        assert len(chunks) == len(dense_vectors) == len(sparse_vectors)
         points = []
-        for ch, vec in zip(chunks, vectors):
+        for ch, dv, sv in zip(chunks, dense_vectors, sparse_vectors):
             payload = {
                 "text": ch.text,
                 "source_uri": ch.source_uri,
@@ -74,7 +86,7 @@ class Store:
                 "source_type": source_type,
                 **ch.meta,
             }
-            points.append({"id": ch.id, "vector": vec, "payload": payload})
+            points.append({"id": ch.id, "vector": {"dense": dv, "sparse": sv}, "payload": payload})
         if points:
             self._client.put(self._url("/points?wait=true"),
                              json={"points": points}).raise_for_status()
@@ -88,7 +100,8 @@ class Store:
 
     def search(self, vector: list[float], top_k: int = 5,
                query_filter: dict | None = None) -> list[dict]:
-        body: dict = {"vector": vector, "limit": top_k, "with_payload": True}
+        body: dict = {"vector": {"name": "dense", "vector": vector},
+                      "limit": top_k, "with_payload": True}
         if query_filter:
             body["filter"] = query_filter
         r = self._client.post(self._url("/points/search"), json=body)
