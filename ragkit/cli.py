@@ -77,9 +77,12 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         ctx_model = cfg.contextual.model or cfg.ollama.gate_model
         contextualizer = Contextualizer(cfg.ollama, ctx_model, cfg.contextual.max_chunks_per_call)
 
+    sparse_stats_path = os.path.join(".ragkit", "sparse", f"{collection}.json")
+
     pipeline = Pipeline(
         cfg, extractor=extractor, chunker=chunker, embedder=embedder,
         store=store, state=state, gate=gate, contextualizer=contextualizer,
+        sparse_stats_path=sparse_stats_path,
         index_fields=index_fields,
     )
     try:
