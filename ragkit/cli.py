@@ -77,7 +77,8 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         ctx_model = cfg.contextual.model or cfg.ollama.gate_model
         contextualizer = Contextualizer(cfg.ollama, ctx_model, cfg.contextual.max_chunks_per_call)
 
-    sparse_stats_path = os.path.join(".ragkit", "sparse", f"{collection}.json")
+    from .sparse import stats_path
+    sparse_stats_path = stats_path(collection)
 
     pipeline = Pipeline(
         cfg, extractor=extractor, chunker=chunker, embedder=embedder,
@@ -109,7 +110,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         cfg.collection = args.collection
     searcher = Searcher(cfg)
     try:
-        hits = searcher.search(args.query, top_k=args.top_k, rerank=args.rerank)
+        hits = searcher.search(args.query, top_k=args.top_k, rerank=args.rerank, hybrid=args.hybrid)
         if not hits:
             print("no results")
             return 0
@@ -208,7 +209,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
     searcher = Searcher(cfg)
     try:
         def search_fn(query: str, top_k: int) -> list[str]:
-            hits = searcher.search(query, top_k=top_k * _DISTINCT_FANOUT, rerank=args.rerank)
+            hits = searcher.search(query, top_k=top_k * _DISTINCT_FANOUT,
+                                   rerank=args.rerank, hybrid=args.hybrid)
             return [h["source_uri"] for h in hits]
 
         recall, mrr, per_query, errored = evaluate(golden, search_fn, k_values)
@@ -289,6 +291,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument("--collection", default=None)
     p_search.add_argument("--top-k", type=int, default=5)
     p_search.add_argument("--rerank", action="store_true")
+    p_search.add_argument("--hybrid", action="store_true", help="dense + BM25 sparse, RRF-fused")
     p_search.add_argument("--config", default="ragkit.yaml")
     p_search.set_defaults(func=cmd_search)
 
@@ -305,6 +308,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_eval.add_argument("--golden", default=None)
     p_eval.add_argument("--k", default=None, help="comma-separated, e.g. 1,3,5,10")
     p_eval.add_argument("--rerank", action="store_true")
+    p_eval.add_argument("--hybrid", action="store_true", help="dense + BM25 sparse, RRF-fused")
     p_eval.add_argument("--out", default=None)
     p_eval.add_argument("--baseline", default=None)
     p_eval.add_argument("--config", default="ragkit.yaml")
