@@ -92,3 +92,8 @@ def to_qdrant(sparse: dict[int, float]) -> dict:
         return {"indices": [], "values": []}
     idx, val = zip(*sparse.items())
     return {"indices": list(idx), "values": list(val)}
+
+
+def stats_path(collection: str) -> str:
+    """Where a collection's BM25 corpus stats are persisted."""
+    return os.path.join(".ragkit", "sparse", f"{collection}.json")

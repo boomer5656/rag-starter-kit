@@ -126,5 +126,24 @@ class Store:
             if offset is None or not points:
                 break
 
+    def query_hybrid(self, dense_vector: list[float], sparse_vector: dict,
+                     top_k: int = 5, query_filter: dict | None = None,
+                     prefetch: int = 50) -> list[dict]:
+        """Dense + sparse legs fused server-side with RRF (Qdrant Query API)."""
+        legs = [
+            {"query": dense_vector, "using": "dense", "limit": prefetch},
+            {"query": {"indices": sparse_vector.get("indices", []),
+                       "values": sparse_vector.get("values", [])},
+             "using": "sparse", "limit": prefetch},
+        ]
+        if query_filter:
+            for leg in legs:
+                leg["filter"] = query_filter
+        body = {"prefetch": legs, "query": {"fusion": "rrf"},
+                "limit": top_k, "with_payload": True}
+        r = self._client.post(self._url("/points/query"), json=body)
+        r.raise_for_status()
+        return r.json().get("result", {}).get("points", [])
+
     def close(self) -> None:
         self._client.close()

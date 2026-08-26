@@ -72,3 +72,18 @@ def test_search_uses_named_dense_vector():
     body = next(c[2] for c in s._client.calls if c[0] == "POST" and c[1].endswith("/points/search"))
     assert body["vector"] == {"name": "dense", "vector": [0.1, 0.2]}
     assert body["limit"] == 3
+
+
+def test_query_hybrid_body_has_both_legs_and_rrf():
+    s = _store(_FakeClient())
+    # _FakeClient.post returns {"result": []}; query api reads result.points -> tolerate missing
+    s._client.post = lambda url, json=None: (s._client.calls.append(("POST", url, json))
+                                             or _Resp(200, {"result": {"points": []}}))
+    s.query_hybrid([0.1, 0.2], {"indices": [7], "values": [0.5]}, top_k=4, prefetch=20)
+    body = next(c[2] for c in s._client.calls if c[0] == "POST" and c[1].endswith("/points/query"))
+    legs = {leg["using"]: leg for leg in body["prefetch"]}
+    assert set(legs) == {"dense", "sparse"}
+    assert legs["dense"]["query"] == [0.1, 0.2] and legs["dense"]["limit"] == 20
+    assert legs["sparse"]["query"] == {"indices": [7], "values": [0.5]}
+    assert body["query"] == {"fusion": "rrf"}
+    assert body["limit"] == 4

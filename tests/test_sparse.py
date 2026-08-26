@@ -81,3 +81,8 @@ def test_corpus_stats_roundtrip(tmp_path):
     r = CorpusStats.load(p)
     assert r.n_docs == s.n_docs and r.total_len == s.total_len and r.df == s.df
     assert CorpusStats.load(str(tmp_path / "missing.json")).n_docs == 0
+
+
+def test_stats_path_shape():
+    from ragkit.sparse import stats_path
+    assert stats_path("mycoll").replace("\\", "/") == ".ragkit/sparse/mycoll.json"
