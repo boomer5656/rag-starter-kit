@@ -93,3 +93,11 @@ eval:
   #                            # or empty questions. Qwen3 thinking is disabled automatically.
   per_doc_n: 3                  # questions generated per document
   k_values: [1, 3, 5, 10]
+
+# Contextual retrieval (opt-in). Prepends an LLM-written situating sentence to
+# each chunk before embedding. Adds one Ollama call per document at ingest.
+contextual:
+  enabled: false
+  # model: null                # null -> ollama.gate_model. Use a CAPABLE instruct
+  #                            # model (>=~9B); a tiny model writes weak context.
+  max_chunks_per_call: 10

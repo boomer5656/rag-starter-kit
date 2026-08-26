@@ -66,6 +66,13 @@ class EvalConfig:
 
 
 @dataclass
+class ContextualConfig:
+    enabled: bool = False
+    model: Optional[str] = None          # None -> ollama.gate_model (use a CAPABLE model)
+    max_chunks_per_call: int = 10
+
+
+@dataclass
 class Config:
     collection: str = "ragkit"
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
@@ -75,6 +82,7 @@ class Config:
     state: StateConfig = field(default_factory=StateConfig)
     chunk: ChunkConfig = field(default_factory=ChunkConfig)
     eval: EvalConfig = field(default_factory=EvalConfig)
+    contextual: ContextualConfig = field(default_factory=ContextualConfig)
     gate_enabled: bool = False       # opt-in per run
 
     @staticmethod
@@ -94,6 +102,7 @@ class Config:
             state=StateConfig(**(data.get("state") or {})),
             chunk=ChunkConfig(**(data.get("chunk") or {})),
             eval=EvalConfig(**(data.get("eval") or {})),
+            contextual=ContextualConfig(**(data.get("contextual") or {})),
             gate_enabled=bool(data.get("gate_enabled", False)),
         )
         cfg._apply_env()
