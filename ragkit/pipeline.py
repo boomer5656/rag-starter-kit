@@ -17,6 +17,7 @@ from typing import Iterable, Protocol
 from .config import Config
 from .embed import Embedder
 from .models import Chunk, PipelineResult, SourceDoc, State
+from .sparse import CorpusStats, doc_sparse, to_qdrant
 from .state import StateStore
 from .store import Store
 
@@ -41,6 +42,7 @@ class Pipeline:
     def __init__(self, cfg: Config, *, extractor: Extractor, chunker: Chunker,
                  embedder: Embedder, store: Store, state: StateStore,
                  gate: Gate | None = None, contextualizer: ContextualizerLike | None = None,
+                 sparse_stats_path: str | None = None,
                  index_fields: dict[str, str] | None = None):
         self.cfg = cfg
         self.extractor = extractor
@@ -50,6 +52,7 @@ class Pipeline:
         self.state = state
         self.gate = gate
         self.contextualizer = contextualizer
+        self.sparse_stats_path = sparse_stats_path
         self.index_fields = index_fields or {}
 
     def run(self, docs: Iterable[SourceDoc], *, source_type: str = "document",
@@ -118,7 +121,15 @@ class Pipeline:
         dim = self.embedder.dim
         self.store.ensure_collection(dim, self.index_fields)
 
-        # --- embed + store (bge-m3 resident for the whole batch) ---
+        # --- corpus stats for BM25 (fresh per run; a "document" is a chunk) ---
+        stats = CorpusStats()
+        for _d, _chunks in chunked:
+            for c in _chunks:
+                stats.add_doc(c.text)
+        if self.sparse_stats_path:
+            stats.save(self.sparse_stats_path)
+
+        # --- embed + store (dense from the embedder, sparse from BM25) ---
         for d, chunks in chunked:
             try:
                 texts = [c.text for c in chunks]
@@ -130,11 +141,11 @@ class Pipeline:
                 bad = next((v for v in vectors if len(v) != dim), None)
                 if bad is not None:
                     raise ValueError(f"embedding dim {len(bad)} != expected {dim}")
+                sparse = [to_qdrant(doc_sparse(c.text, stats)) for c in chunks]
                 self.state.set(d.uri, State.EMBEDDED, dim=dim, n_chunks=len(chunks))
                 res.embedded += len(chunks)
-                # re-chunking may change ordinals; clear the source then upsert fresh
                 self.store.delete_source(d.uri)
-                self.store.upsert(chunks, vectors, source_type=source_type)
+                self.store.upsert(chunks, vectors, sparse, source_type=source_type)
                 self.state.set(d.uri, State.STORED, dim=dim, n_chunks=len(chunks))
                 res.stored += len(chunks)
             except Exception as e:  # noqa: BLE001
