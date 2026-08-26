@@ -146,7 +146,9 @@ def _make_gen_fn(client: httpx.Client, ollama_url: str, model: str):
             "model": model, "system": system, "prompt": prompt,
             # think=False is load-bearing: Qwen3 models default to a thinking pass that,
             # under format="json", consumes the whole budget and returns "" or "{}".
-            "stream": False, "format": "json", "think": False, "options": {"temperature": 0.2},
+            # num_predict caps output per the usage-limits doctrine (no uncapped generations).
+            "stream": False, "format": "json", "think": False,
+            "options": {"temperature": 0.2, "num_predict": 1024},
         })
         r.raise_for_status()
         raw = r.json().get("response")
@@ -155,7 +157,9 @@ def _make_gen_fn(client: httpx.Client, ollama_url: str, model: str):
         import json as _json
         data = _json.loads(raw)
         qs = data.get("questions") if isinstance(data, dict) else data
-        return [str(q) for q in (qs or [])][:n]
+        if not isinstance(qs, list):      # model returned a non-list shape -> no questions
+            return []
+        return [str(q) for q in qs][:n]
 
     return gen
 
@@ -188,7 +192,17 @@ def cmd_eval(args: argparse.Namespace) -> int:
     cfg = Config.load(args.config)
     if args.collection:
         cfg.collection = args.collection
-    k_values = [int(x) for x in args.k.split(",")] if args.k else cfg.eval.k_values
+    if args.k:
+        try:
+            k_values = [int(x) for x in args.k.split(",") if x.strip()]
+        except ValueError:
+            print("invalid --k: expected comma-separated integers, e.g. 1,3,5,10")
+            return 1
+    else:
+        k_values = cfg.eval.k_values
+    if not k_values:
+        print("no k values to evaluate (check --k or eval.k_values)")
+        return 1
     golden_path = args.golden or cfg.eval.golden_path.format(collection=cfg.collection)
     golden = load_golden(golden_path)
     searcher = Searcher(cfg)

@@ -52,3 +52,21 @@ def test_make_gen_fn_caps_to_n():
     gen = _make_gen_fn(client, "http://tower:11434", "m")
     # canned response has 2 questions; asking for 1 must cap.
     assert gen("doc", 1) == ["What is X?"]
+
+
+def test_make_gen_fn_sets_output_cap():
+    # usage-limits doctrine: no uncapped generations.
+    client = _FakeClient()
+    _make_gen_fn(client, "http://tower:11434", "m")("doc", 2)
+    assert 0 < client.last_body["options"]["num_predict"] <= 1024
+
+
+class _FakeClientBadShape:
+    def post(self, url: str, json: dict) -> _FakeResp:
+        return _FakeResp({"response": '{"questions": "not a list"}'})
+
+
+def test_make_gen_fn_non_list_questions_returns_empty():
+    # model returns {"questions": "<string>"} -> must NOT iterate into characters.
+    gen = _make_gen_fn(_FakeClientBadShape(), "http://x", "m")
+    assert gen("doc", 2) == []

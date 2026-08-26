@@ -72,7 +72,7 @@ def generate_golden(docs: Iterable[tuple[str, str]], gen_fn: GenFn, per_doc_n: i
         except Exception:
             skipped += 1
             continue
-        tail = uri.rsplit("/", 1)[-1].lower()
+        tail = uri.replace("\\", "/").rsplit("/", 1)[-1].lower()   # basename, cross-platform
         seen: set[str] = set()
         for q in questions:
             q = (q or "").strip()
@@ -90,6 +90,8 @@ def evaluate(golden: list[GoldenItem], search_fn: SearchFn,
              k_values: list[int]) -> tuple[dict[int, float], float, list[dict], int]:
     """Return (recall_at_k, mrr, per_query, errored). An errored query counts as a 0
     and is surfaced via `errored`, never dropped."""
+    if not k_values:
+        raise ValueError("evaluate: k_values must be non-empty")
     maxk = max(k_values)
     recall_sums = {k: 0.0 for k in k_values}
     rr_sum = 0.0

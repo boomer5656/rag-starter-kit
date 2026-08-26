@@ -41,6 +41,19 @@ def test_generate_golden_drops_filename_leak():
     assert items == []
 
 
+def test_generate_golden_drops_filename_leak_windows_path():
+    # regression: basename must be extracted from backslash paths too, not just "/".
+    def gen(text, n):
+        return ["What does overview.md say about the pipeline stages in this system?"]
+    items, _ = generate_golden([("C:\\Users\\x\\docs\\overview.md", "body")], gen, per_doc_n=1)
+    assert items == []
+
+
+def test_evaluate_rejects_empty_k_values():
+    with pytest.raises(ValueError):
+        evaluate([GoldenItem("q", ["a"])], lambda q, k: ["a"], [])
+
+
 def test_generate_golden_isolates_failing_doc():
     def gen(text, n):
         if text == "boom":
