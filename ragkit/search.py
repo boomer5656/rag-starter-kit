@@ -11,6 +11,7 @@ from __future__ import annotations
 from .config import Config
 from .embed import Embedder
 from .rerank import Reranker
+from .sparse import CorpusStats, query_sparse, stats_path, to_qdrant
 from .store import Store
 
 # How much extra depth to pull from Qdrant before handing hits to the
@@ -27,11 +28,13 @@ class Searcher:
         self.embedder = Embedder(cfg.ollama)
         self.store = Store(cfg.qdrant, cfg.collection)
         self.reranker = Reranker(cfg.reranker)
+        self._stats = CorpusStats.load(stats_path(cfg.collection))
 
-    def search(self, query: str, *, top_k: int = 5, rerank: bool = False,
+    def search(self, query: str, *, top_k: int = 5, rerank: bool = False, hybrid: bool = False,
                query_filter: dict | None = None, collection: str | None = None) -> list[dict]:
         store = self.store
         opened = False
+        coll = collection if collection is not None else self.cfg.collection
         if collection is not None and collection != self.store.collection:
             store = Store(self.cfg.qdrant, collection)
             opened = True
@@ -39,7 +42,12 @@ class Searcher:
             vector = self.embedder.embed(query)
             want_rerank = rerank and bool(self.cfg.reranker.url)
             fetch_k = top_k * _RERANK_FANOUT if want_rerank else top_k
-            hits = store.search(vector, top_k=fetch_k, query_filter=query_filter)
+            stats = self._stats if coll == self.cfg.collection else CorpusStats.load(stats_path(coll))
+            if hybrid and stats.n_docs > 0:
+                sparse = to_qdrant(query_sparse(query, stats))
+                hits = store.query_hybrid(vector, sparse, top_k=fetch_k, query_filter=query_filter)
+            else:
+                hits = store.search(vector, top_k=fetch_k, query_filter=query_filter)
             if want_rerank:
                 hits = self.reranker.rerank(query, hits, top_k=top_k)
             else:
