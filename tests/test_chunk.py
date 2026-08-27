@@ -9,7 +9,7 @@ the exact heuristic constant.
 """
 from __future__ import annotations
 
-from ragkit.chunk import TokenChunker
+from ragkit.chunk import TokenChunker, _MAX_CHUNK_CHARS
 from ragkit.config import ChunkConfig
 from ragkit.models import Chunk
 
@@ -108,6 +108,29 @@ def test_meta_is_carried_through_to_every_chunk():
     for c in chunks:
         assert c.meta.get("title") == "Doc Title"
         assert c.meta.get("source_type") == "document"
+
+
+def test_caps_chunk_characters_for_dense_tokens():
+    # char-dense content (30-char tokens): the word budget alone would exceed the char cap,
+    # producing chunks too large to embed. Every chunk must stay within the char cap.
+    chunker = _chunker(max_tokens=512, overlap_tokens=0)
+    dense = " ".join("x" * 30 for _ in range(1000))
+    chunks = chunker.chunk("file:///a.txt", dense, {})
+    assert chunks
+    assert [c.ordinal for c in chunks] == list(range(len(chunks)))  # still contiguous
+    for c in chunks:
+        assert len(c.text) <= _MAX_CHUNK_CHARS
+
+
+def test_splits_a_single_giant_word_without_losing_content():
+    # one whitespace-free 40k-char run (a base64 blob / minified line) must not become a
+    # single oversized chunk — it is split into embeddable pieces, and no content is dropped.
+    chunker = _chunker(max_tokens=512, overlap_tokens=64)
+    chunks = chunker.chunk("file:///a.txt", "intro " + "x" * 40000 + " tail", {})
+    assert len(chunks) > 1
+    for c in chunks:
+        assert len(c.text) <= _MAX_CHUNK_CHARS
+    assert sum(c.text.count("x") for c in chunks) >= 40000
 
 
 def test_meta_is_copied_not_shared_across_chunks():
