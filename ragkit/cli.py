@@ -110,7 +110,9 @@ def cmd_search(args: argparse.Namespace) -> int:
         cfg.collection = args.collection
     searcher = Searcher(cfg)
     try:
-        hits = searcher.search(args.query, top_k=args.top_k, rerank=args.rerank, hybrid=args.hybrid)
+        multi = cfg.multi_query.n if args.multi is None else args.multi
+        hits = searcher.search(args.query, top_k=args.top_k, rerank=args.rerank, hybrid=args.hybrid,
+                               multi=multi)
         if not hits:
             print("no results")
             return 0
@@ -208,9 +210,11 @@ def cmd_eval(args: argparse.Namespace) -> int:
     golden = load_golden(golden_path)
     searcher = Searcher(cfg)
     try:
+        multi = cfg.multi_query.n if args.multi is None else args.multi
+
         def search_fn(query: str, top_k: int) -> list[str]:
             hits = searcher.search(query, top_k=top_k * _DISTINCT_FANOUT,
-                                   rerank=args.rerank, hybrid=args.hybrid)
+                                   rerank=args.rerank, hybrid=args.hybrid, multi=multi)
             return [h["source_uri"] for h in hits]
 
         recall, mrr, per_query, errored = evaluate(golden, search_fn, k_values)
@@ -292,6 +296,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument("--top-k", type=int, default=5)
     p_search.add_argument("--rerank", action="store_true")
     p_search.add_argument("--hybrid", action="store_true", help="dense + BM25 sparse, RRF-fused")
+    p_search.add_argument("--multi", type=int, nargs="?", const=None, default=0,
+                          help="expand into N paraphrases + RRF-fuse (N optional; default from config)")
     p_search.add_argument("--config", default="ragkit.yaml")
     p_search.set_defaults(func=cmd_search)
 
@@ -309,6 +315,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_eval.add_argument("--k", default=None, help="comma-separated, e.g. 1,3,5,10")
     p_eval.add_argument("--rerank", action="store_true")
     p_eval.add_argument("--hybrid", action="store_true", help="dense + BM25 sparse, RRF-fused")
+    p_eval.add_argument("--multi", type=int, nargs="?", const=None, default=0,
+                        help="expand into N paraphrases + RRF-fuse (N optional; default from config)")
     p_eval.add_argument("--out", default=None)
     p_eval.add_argument("--baseline", default=None)
     p_eval.add_argument("--config", default="ragkit.yaml")

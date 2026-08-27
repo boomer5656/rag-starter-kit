@@ -73,6 +73,12 @@ class ContextualConfig:
 
 
 @dataclass
+class MultiQueryConfig:
+    model: Optional[str] = None    # None -> ollama.gate_model; use a CAPABLE instruct model
+    n: int = 3                     # default paraphrase count for `--multi` with no number
+
+
+@dataclass
 class Config:
     collection: str = "ragkit"
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
@@ -83,6 +89,7 @@ class Config:
     chunk: ChunkConfig = field(default_factory=ChunkConfig)
     eval: EvalConfig = field(default_factory=EvalConfig)
     contextual: ContextualConfig = field(default_factory=ContextualConfig)
+    multi_query: MultiQueryConfig = field(default_factory=MultiQueryConfig)
     gate_enabled: bool = False       # opt-in per run
 
     @staticmethod
@@ -103,6 +110,7 @@ class Config:
             chunk=ChunkConfig(**(data.get("chunk") or {})),
             eval=EvalConfig(**(data.get("eval") or {})),
             contextual=ContextualConfig(**(data.get("contextual") or {})),
+            multi_query=MultiQueryConfig(**(data.get("multi_query") or {})),
             gate_enabled=bool(data.get("gate_enabled", False)),
         )
         cfg._apply_env()

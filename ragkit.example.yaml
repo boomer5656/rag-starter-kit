@@ -101,3 +101,9 @@ contextual:
   # model: null                # null -> ollama.gate_model. Use a CAPABLE instruct
   #                            # model (>=~9B); a tiny model writes weak context.
   max_chunks_per_call: 10
+
+# Multi-query expansion (ragkit search/eval --multi N). Paraphrase the query, retrieve each,
+# RRF-fuse. Helps vague/synonym-heavy queries. Off unless --multi is passed.
+multi_query:
+  # model: null            # null -> ollama.gate_model; use a CAPABLE instruct model
+  n: 3
