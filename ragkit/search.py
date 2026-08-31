@@ -11,6 +11,7 @@ from __future__ import annotations
 import httpx
 
 from .config import Config
+from .crag import apply_grades, is_weak, parse_grades
 from .embed import Embedder
 from .expand import parse_expansions, rrf_fuse
 from .ollama import generate_json
@@ -22,6 +23,7 @@ from .store import Store
 # reranker — reranking only helps if it has more than top_k candidates to sort.
 _RERANK_FANOUT = 4
 _SNIPPET_CHARS = 500
+_CRAG_POOL = 10   # cap on passages sent to the CRAG grader per query (one batched LLM call)
 
 
 class Searcher:
@@ -62,8 +64,48 @@ class Searcher:
         except Exception:
             return []
 
+    _GRADE_SYSTEM = (
+        "You grade how relevant each numbered passage is to the user's query, from 0.0 (irrelevant) "
+        "to 1.0 (directly answers it). Output ONLY JSON: {\"grades\": [0.0, ...]} — one number per "
+        "passage, in order."
+    )
+
+    def _grade(self, query: str, hits: list[dict]) -> list[float]:
+        """Relevance grade in [0,1] for each hit (one batched LLM call). Fails safe → neutral 0.5s."""
+        if not hits:
+            return []
+        numbered = "\n\n".join(
+            f"[{i}] {((h.get('payload') or {}).get('text', ''))[:600]}" for i, h in enumerate(hits))
+        prompt = (f"Query: {query}\n\nPassages:\n{numbered}\n\n"
+                  f"Return JSON: {{\"grades\": [...]}} with {len(hits)} numbers, in order.")
+        try:
+            model = self.cfg.crag.model or self.cfg.ollama.gate_model
+            raw = generate_json(self._expand_client, self.cfg.ollama.url, model,
+                                system=self._GRADE_SYSTEM, prompt=prompt)
+            return parse_grades(raw, len(hits))
+        except Exception:
+            return [0.5] * len(hits)
+
+    def _crag_correct(self, query: str, hits: list[dict], store: Store, fetch_k: int,
+                      hybrid: bool, coll: str, query_filter: dict | None) -> list[dict]:
+        """Grade the top pool, drop junk, and re-retrieve with a rewritten query if the pool is weak."""
+        if not hits:
+            return hits
+        drop = self.cfg.crag.drop_threshold
+        pool, tail = hits[:_CRAG_POOL], hits[_CRAG_POOL:]
+        kept, best = apply_grades(pool, self._grade(query, pool), drop=drop)
+        kept = kept + tail
+        if is_weak(best, floor=self.cfg.crag.fallback_floor):
+            rewrites = self._expand(query, 1)
+            if rewrites:
+                extra = self._retrieve_hits(store, rewrites[0], fetch_k, hybrid, coll, query_filter)
+                extra_kept, _ = apply_grades(extra[:_CRAG_POOL],
+                                             self._grade(query, extra[:_CRAG_POOL]), drop=drop)
+                kept = rrf_fuse([kept, extra_kept]) if kept else extra_kept
+        return kept
+
     def search(self, query: str, *, top_k: int = 5, rerank: bool = False, hybrid: bool = False,
-               multi: int = 0, query_filter: dict | None = None,
+               multi: int = 0, crag: bool = False, query_filter: dict | None = None,
                collection: str | None = None) -> list[dict]:
         store = self.store
         opened = False
@@ -80,6 +122,8 @@ class Searcher:
                                  for q in queries])
             else:
                 hits = self._retrieve_hits(store, query, fetch_k, hybrid, coll, query_filter)
+            if crag:
+                hits = self._crag_correct(query, hits, store, fetch_k, hybrid, coll, query_filter)
             if want_rerank:
                 hits = self.reranker.rerank(query, hits, top_k=top_k)   # rerank vs ORIGINAL query
             else:
