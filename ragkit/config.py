@@ -79,6 +79,13 @@ class MultiQueryConfig:
 
 
 @dataclass
+class CragConfig:
+    model: Optional[str] = None          # None -> ollama.gate_model; a capable instruct model grades better
+    drop_threshold: float = 0.25
+    fallback_floor: float = 0.5
+
+
+@dataclass
 class Config:
     collection: str = "ragkit"
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
@@ -90,6 +97,7 @@ class Config:
     eval: EvalConfig = field(default_factory=EvalConfig)
     contextual: ContextualConfig = field(default_factory=ContextualConfig)
     multi_query: MultiQueryConfig = field(default_factory=MultiQueryConfig)
+    crag: CragConfig = field(default_factory=CragConfig)
     gate_enabled: bool = False       # opt-in per run
 
     @staticmethod
@@ -111,6 +119,7 @@ class Config:
             eval=EvalConfig(**(data.get("eval") or {})),
             contextual=ContextualConfig(**(data.get("contextual") or {})),
             multi_query=MultiQueryConfig(**(data.get("multi_query") or {})),
+            crag=CragConfig(**(data.get("crag") or {})),
             gate_enabled=bool(data.get("gate_enabled", False)),
         )
         cfg._apply_env()

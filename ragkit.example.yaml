@@ -107,3 +107,10 @@ contextual:
 multi_query:
   # model: null            # null -> ollama.gate_model; use a CAPABLE instruct model
   n: 3
+
+# Corrective RAG (ragkit search/eval --crag). Grade retrieved passages, drop off-topic ones, and
+# re-retrieve with a rewritten query when the whole pool is weak. Precision-oriented; off by default.
+crag:
+  # model: null            # null -> ollama.gate_model; a capable instruct model grades better
+  drop_threshold: 0.25
+  fallback_floor: 0.5

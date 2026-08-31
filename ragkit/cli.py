@@ -112,7 +112,7 @@ def cmd_search(args: argparse.Namespace) -> int:
     try:
         multi = cfg.multi_query.n if args.multi is None else args.multi
         hits = searcher.search(args.query, top_k=args.top_k, rerank=args.rerank, hybrid=args.hybrid,
-                               multi=multi)
+                               multi=multi, crag=args.crag)
         if not hits:
             print("no results")
             return 0
@@ -214,7 +214,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
 
         def search_fn(query: str, top_k: int) -> list[str]:
             hits = searcher.search(query, top_k=top_k * _DISTINCT_FANOUT,
-                                   rerank=args.rerank, hybrid=args.hybrid, multi=multi)
+                                   rerank=args.rerank, hybrid=args.hybrid, multi=multi, crag=args.crag)
             return [h["source_uri"] for h in hits]
 
         recall, mrr, per_query, errored = evaluate(golden, search_fn, k_values)
@@ -298,6 +298,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument("--hybrid", action="store_true", help="dense + BM25 sparse, RRF-fused")
     p_search.add_argument("--multi", type=int, nargs="?", const=None, default=0,
                           help="expand into N paraphrases + RRF-fuse (N optional; default from config)")
+    p_search.add_argument("--crag", action="store_true",
+                          help="corrective RAG: grade + drop off-topic hits, re-retrieve if pool is weak")
     p_search.add_argument("--config", default="ragkit.yaml")
     p_search.set_defaults(func=cmd_search)
 
@@ -317,6 +319,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_eval.add_argument("--hybrid", action="store_true", help="dense + BM25 sparse, RRF-fused")
     p_eval.add_argument("--multi", type=int, nargs="?", const=None, default=0,
                         help="expand into N paraphrases + RRF-fuse (N optional; default from config)")
+    p_eval.add_argument("--crag", action="store_true",
+                        help="corrective RAG: grade + drop off-topic hits, re-retrieve if pool is weak")
     p_eval.add_argument("--out", default=None)
     p_eval.add_argument("--baseline", default=None)
     p_eval.add_argument("--config", default="ragkit.yaml")
