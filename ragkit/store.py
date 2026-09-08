@@ -8,6 +8,8 @@ embedder's dimension before any write (see Store.ensure_collection), making the
 """
 from __future__ import annotations
 
+import os
+
 import httpx
 
 from .config import QdrantConfig
@@ -22,7 +24,9 @@ class Store:
     def __init__(self, cfg: QdrantConfig, collection: str, timeout: float = 120.0):
         self.cfg = cfg
         self.collection = collection
-        self._client = httpx.Client(timeout=timeout)
+        # Tower Qdrant is API-keyed since 2026-09-08; unset = no header (keyless local Qdrant unchanged).
+        key = os.environ.get("QDRANT_API_KEY", "")
+        self._client = httpx.Client(timeout=timeout, headers=({"api-key": key} if key else {}))
 
     def _url(self, suffix: str = "") -> str:
         return f"{self.cfg.url}/collections/{self.collection}{suffix}"
