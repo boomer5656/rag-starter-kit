@@ -70,4 +70,4 @@ Ollama, your Qdrant, your disk. Nothing is sent anywhere.
 
 ## License
 
-TBD (see `docs/ARCHITECTURE.md`). This is a commercial starter kit in progress.
+MIT — see [LICENSE](LICENSE).
