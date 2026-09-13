@@ -74,5 +74,27 @@ hits=$(scan -o '[0-9]{2,5}(-[0-9]{1,5})? (([A-Z][A-Za-z]+|[0-9]{1,2}(st|nd|rd|th
   | grep -vE ' (Main|Oak|Elm) |/secret-scan\.sh')
 [ -n "$hits" ] && { echo "FAIL pass4:"; echo "$hits"; fail=1; }
 
+# Pass 5 - employer identification numbers. Pass 4 covers addresses; this covers the other
+# PII class that turned up in a real tree.
+# LABEL PROXIMITY, not bare shape. [0-9]{2}-[0-9]{7} on its own matched 50 lines in the one
+# repo that handles EINs, nearly all of them prose ABOUT EIN handling. A red signal that is
+# all noise teaches everyone to ignore the gate, so the number must sit near a label.
+# The label is matched CASE-INSENSITIVELY and the 40-char window allows digits. The strict
+# spelling was tried first and REJECTED on evidence: an uppercase-only label with a
+# digit-free gap cut 50 hits to 15 but caught only ONE of the two real EINs that repo
+# actually carried. Both live values sat in ein(.<entity> LLC., .<number>.) fixtures, where
+# the label is lowercase and the entity name in the gap contains a house number, which broke
+# both halves of the strict rule at once. The loose form catches 2 of 2. A pass that misses
+# half the live values is worse than no pass, so the wider window is the correct trade.
+# Allowlisted: 00-0000000 and 12-3456789. All-zeros and the sequential documentation example
+# are self-evidently not values - the same class of textbook placeholder as Main/Oak/Elm in
+# pass 4. Masked forms need no term at all: ##-####### and xx-xxxxxxx contain no digits, so
+# the pattern never sees them.
+#   Any FURTHER allowlisting must come from a declaration committed in the repo, never from
+#   scraping the tree. See the pass 4 note for why that rule exists - it is the same failure.
+hits=$(scan -o '([Ee][Ii][Nn]|FEIN|TIN|[Tt]ax[ _-]?[Ii][Dd]).{0,40}[0-9]{2}-[0-9]{7}\b' \
+  | grep -vE '00-0000000|12-3456789|/secret-scan\.sh')
+[ -n "$hits" ] && { echo "FAIL pass5:"; echo "$hits"; fail=1; }
+
 [ $fail -eq 0 ] && echo "secret-scan: clean"
 exit $fail
