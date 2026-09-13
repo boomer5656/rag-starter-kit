@@ -56,6 +56,8 @@ hits=$(scan -o -- "-u[[:space:]]+'?[A-Za-z0-9_-]+:[^'\"[:space:]]{4,}" \
 # Write the groups as ( ), never (?: ). This is POSIX ERE, where (?: is not a
 # non-capturing group - it is a syntax error that makes the whole pattern match NOTHING,
 # so the pass would report clean forever. That exact suggestion was proposed and rejected.
+# Keep each street type and its spelled-out form in step. Blvd/Ct/Pl first shipped without
+# Boulevard/Court/Place, so "12 Melrose Boulevard" matched nothing and passed silently.
 # -o matters for the same reason it does in pass 3 - each occurrence is judged on its own,
 # so a placeholder elsewhere on the line cannot excuse a real address next to it.
 # Allowlisted: a core containing Main / Oak / Elm, the textbook fake street names, which is
@@ -68,7 +70,7 @@ hits=$(scan -o -- "-u[[:space:]]+'?[A-Za-z0-9_-]+:[^'\"[:space:]]{4,}" \
 #   Do NOT grow this list by scraping the current tree. Deriving the allowlist from what is
 #   already committed makes the gate self-certifying: it would allowlist a real address that
 #   has already leaked. Any addition must come from a declared placeholder vocabulary.
-hits=$(scan -o '[0-9]{2,5}(-[0-9]{1,5})? (([A-Z][A-Za-z]+|[0-9]{1,2}(st|nd|rd|th)) ){1,3}(St|Ave|Rd|Dr|Ln|Blvd|Ct|Pl|Street|Avenue|Road|Drive|Lane)\b' \
+hits=$(scan -o '[0-9]{2,5}(-[0-9]{1,5})? (([A-Z][A-Za-z]+|[0-9]{1,2}(st|nd|rd|th)) ){1,3}(St|Ave|Rd|Dr|Ln|Blvd|Ct|Pl|Street|Avenue|Road|Drive|Lane|Boulevard|Court|Place)\b' \
   | grep -vE ' (Main|Oak|Elm) |/secret-scan\.sh')
 [ -n "$hits" ] && { echo "FAIL pass4:"; echo "$hits"; fail=1; }
 
