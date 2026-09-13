@@ -131,7 +131,12 @@ hits=$(scan -o '([Ee][Ii][Nn]|FEIN|TIN|[Ee]mployer|[Tt]ax[ _-]?[Ii][Dd]).{0,40}[
 # SCOPE: this is the merchant-descriptor pass, NOT a general phone-number pass. A pass
 # keying on phone next to a contact label would light up 20 declared-fictional demo values
 # and needs a declaration before it is worth anything. Deliberately not built.
-hits=$(scan -o '[A-Z]{2,4} ?\*[^0-9]{2,40}([0-9]{3}-[0-9]{7}|[0-9]{3}-[0-9]{3}-[0-9]{4}|\([0-9]{3}\) ?[0-9]{3}-[0-9]{4}|[0-9]{10})' | grep -v '/secret-scan\.sh')
+# ONE allowlist term, and it is provable rather than merely likely: the NANP range reserved for
+# fiction, 555-0100 to 555-0199. No real line can be issued in it, so exempting it cannot ever
+# launder a live number - which is a stronger guarantee than a fake-sounding street name, where
+# a real address could in principle sit on a Main Street. The term matches the reserved NUMBER,
+# never a vendor name, so a real phone beside a synthetic name still fails.
+hits=$(scan -o '[A-Z]{2,4} ?\*[^0-9]{2,40}([0-9]{3}-[0-9]{7}|[0-9]{3}-[0-9]{3}-[0-9]{4}|\([0-9]{3}\) ?[0-9]{3}-[0-9]{4}|[0-9]{10})' | grep -vE '555-?01[0-9]{2}|/secret-scan\.sh')
 [ -n "$hits" ] && { echo "FAIL pass6:"; echo "$hits"; fail=1; }
 
 [ $fail -eq 0 ] && echo "secret-scan: clean"
