@@ -45,5 +45,22 @@ hits=$(scan -o -- "-u[[:space:]]+'?[A-Za-z0-9_-]+:[^'\"[:space:]]{4,}" \
   | grep -vE ':[$]|:<|/secret-scan\.sh')
 [ -n "$hits" ] && { echo "FAIL pass3:"; echo "$hits"; fail=1; }
 
+# Pass 4 - street-address shapes. Credentials are not the only thing that must not reach
+# git. Passes 1-3 report clean on a tree that is full of real property addresses, which is
+# exactly what a portfolio repo carries. This pass closes that gap.
+# Shape-matching ONLY. The real addresses are deliberately not listed here: writing them
+# down to match them exactly would put them into git in every repo that carries this gate.
+# -o matters for the same reason it does in pass 3 - each occurrence is judged on its own,
+# so a placeholder elsewhere on the line cannot excuse a real address next to it.
+# Allowlisted: Main / Oak / Elm, the textbook fake street names, which is what every test
+# fixture in these repos already uses.
+#   TRADE-OFF, accepted knowingly: a REAL address that happens to sit on a Main, Oak or Elm
+#   street is missed. Narrow street names still beat allowlisting whole test-file paths -
+#   a path allowlist goes stale silently when a file is renamed or a real address lands in
+#   an existing test file, and it would hide far more than three street names do.
+hits=$(scan -o '[0-9]{2,5}(-[0-9]{1,5})? [A-Z][A-Za-z]+ (St|Ave|Rd|Dr|Ln|Blvd|Ct|Pl|Street|Avenue|Road|Drive|Lane)\b' \
+  | grep -vE ' (Main|Oak|Elm) |/secret-scan\.sh')
+[ -n "$hits" ] && { echo "FAIL pass4:"; echo "$hits"; fail=1; }
+
 [ $fail -eq 0 ] && echo "secret-scan: clean"
 exit $fail
