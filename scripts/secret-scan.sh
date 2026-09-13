@@ -106,5 +106,33 @@ hits=$(scan -o '[0-9]{2,5}(-[0-9]{1,5})? (([A-Z][A-Za-z]+|[0-9]{1,2}(st|nd|rd|th
 hits=$(scan -o '([Ee][Ii][Nn]|FEIN|TIN|[Ee]mployer|[Tt]ax[ _-]?[Ii][Dd]).{0,40}[0-9]{2}-[0-9]{7}([^0-9]|$)' | grep -vE '00-0000000|12-3456789|/secret-scan\.sh')
 [ -n "$hits" ] && { echo "FAIL pass5:"; echo "$hits"; fail=1; }
 
+# Pass 6 - phone numbers inside payment-processor merchant descriptors. Pass 4 covers
+# addresses, pass 5 covers EINs; this covers the third PII class found in a real tree - a
+# Plaid transaction descriptor that carries a vendor or person NAME next to their PHONE.
+# The name is what makes it personal data, but the name is not machine-detectable. The
+# descriptor structure is: a processor prefix, then a name, then the number. So the pass
+# anchors on the descriptor, not on the phone.
+# DESCRIPTOR-ANCHORED, NOT a bare phone shape, and the difference is not cosmetic. A bare
+# phone-shaped scan finds 23 hits in the repo that holds transaction data, and 20 of them
+# are ordinary vendor phone fields in a declared-fictional demo fixture that were never a
+# leak. The anchored form finds exactly the 3 that are real. A pass whose signal is 87%
+# noise gets ignored, and then the 3 get ignored with it.
+# The name segment is [^0-9]{2,40} rather than a spelled-out character class. Two reasons:
+# it accepts an apostrophe in a vendor name (O.BRIEN & SONS) which an explicit class would
+# have to list, and listing it is exactly the mistake this file warns about - a literal
+# apostrophe inside a single-quoted bash filter closes the string and the quotes vanish from
+# the regex. Negating digits sidesteps the whole problem and is shorter.
+# Four number forms, since processors are not consistent: 3-7, 3-3-4, (3) 3-4, and a bare
+# 10-digit run. The bare run was measured to cost nothing - zero new hits across every
+# gated repo - so there is no reason to leave that variant undetected.
+# NO ALLOWLIST, deliberately. Every current hit is real unremediated PII and must fail. If a
+# fixture ever needs to carry a descriptor-shaped string, declare it in the repo first and
+# the term gets read off that declaration, as passes 4 and 5 do.
+# SCOPE: this is the merchant-descriptor pass, NOT a general phone-number pass. A pass
+# keying on phone next to a contact label would light up 20 declared-fictional demo values
+# and needs a declaration before it is worth anything. Deliberately not built.
+hits=$(scan -o '[A-Z]{2,4} ?\*[^0-9]{2,40}([0-9]{3}-[0-9]{7}|[0-9]{3}-[0-9]{3}-[0-9]{4}|\([0-9]{3}\) ?[0-9]{3}-[0-9]{4}|[0-9]{10})' | grep -v '/secret-scan\.sh')
+[ -n "$hits" ] && { echo "FAIL pass6:"; echo "$hits"; fail=1; }
+
 [ $fail -eq 0 ] && echo "secret-scan: clean"
 exit $fail
