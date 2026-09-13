@@ -86,14 +86,24 @@ hits=$(scan -o '[0-9]{2,5}(-[0-9]{1,5})? (([A-Z][A-Za-z]+|[0-9]{1,2}(st|nd|rd|th
 # the label is lowercase and the entity name in the gap contains a house number, which broke
 # both halves of the strict rule at once. The loose form catches 2 of 2. A pass that misses
 # half the live values is worse than no pass, so the wider window is the correct trade.
+# NO WORD BOUNDARY, and the spelled-out label is required. Both were real misses:
+#   - a trailing \b cannot match between a digit and a letter, so an EIN pressed straight
+#     against text - EIN<number>SoloHouseLLCFormation - was invisible. The trailing guard is
+#     ([^0-9]|$) instead, which still refuses an 8th digit so a longer digit run and a UUID
+#     fragment are both excluded, but accepts a letter jammed against the number.
+#   - .Employer ID Number<number>. carries no e-i-n substring at all, so the label never fired
+#     on the spelled-out form. Employer is now its own label term.
+#   In a repo that runs OCR over tax documents, the jammed form is exactly where a real EIN
+#   is most likely to sit, so neither miss was academic - both hid live OCR fixtures.
 # Allowlisted: 00-0000000 and 12-3456789. All-zeros and the sequential documentation example
 # are self-evidently not values - the same class of textbook placeholder as Main/Oak/Elm in
 # pass 4. Masked forms need no term at all: ##-####### and xx-xxxxxxx contain no digits, so
 # the pattern never sees them.
 #   Any FURTHER allowlisting must come from a declaration committed in the repo, never from
-#   scraping the tree. See the pass 4 note for why that rule exists - it is the same failure.
-hits=$(scan -o '([Ee][Ii][Nn]|FEIN|TIN|[Tt]ax[ _-]?[Ii][Dd]).{0,40}[0-9]{2}-[0-9]{7}\b' \
-  | grep -vE '00-0000000|12-3456789|/secret-scan\.sh')
+#   scraping the tree. See the pass 4 note for why that rule exists - it is the same failure,
+#   and here it was nearly realised: the two known-real EINs sat in the same fixture file as
+#   the invented ones, so a scraped list would have blessed them permanently.
+hits=$(scan -o '([Ee][Ii][Nn]|FEIN|TIN|[Ee]mployer|[Tt]ax[ _-]?[Ii][Dd]).{0,40}[0-9]{2}-[0-9]{7}([^0-9]|$)' | grep -vE '00-0000000|12-3456789|/secret-scan\.sh')
 [ -n "$hits" ] && { echo "FAIL pass5:"; echo "$hits"; fail=1; }
 
 [ $fail -eq 0 ] && echo "secret-scan: clean"
